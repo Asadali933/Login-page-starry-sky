@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Floating Login — Starfield</title>
+  <style>
+    :root{
+      --glass-bg: rgba(255,255,255,0.06);
+      --glass-border: rgba(255,255,255,0.12);
+      --accent: rgba(255,255,255,0.9);
+      --max-width: 420px;
+      --blur: 8px;
+      --radius: 18px;
+      font-family: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial;
+    }
+
+    html,body{height:100%;margin:0;background:#02030a;color:var(--accent);}
+    /* Fullscreen star canvas */
+    #starfield{position:fixed;inset:0;z-index:0;display:block}
+
+    /* Container centers the floating login box */
+    .wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px;z-index:1;position:relative}
+
+    /* Floating glass card */
+    .card{
+      width:100%;max-width:var(--max-width);
+      background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+      border:1px solid var(--glass-border);
+      backdrop-filter: blur(var(--blur));
+      -webkit-backdrop-filter: blur(var(--blur));
+      border-radius:var(--radius);
+      padding:28px 26px;
+      box-shadow: 0 10px 30px rgba(2,3,10,0.6), 0 2px 6px rgba(0,0,0,0.4);
+      transform: translateY(0);
+      transition: transform 400ms cubic-bezier(.2,.9,.2,1);
+    }
+    .card:hover{transform: translateY(-8px);} /* floating effect on hover */
+
+    .logo{font-weight:700;letter-spacing:0.6px;margin-bottom:6px;font-size:20px}
+    .subtitle{font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:18px}
+
+    form{display:grid;gap:12px}
+
+    label{font-size:13px;color:rgba(255,255,255,0.85)}
+    input[type='email'],input[type='password']{
+      width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);background:rgba(255,255,255,0.02);color:var(--accent);outline:none;font-size:15px;box-sizing:border-box;
+    }
+    input:focus{box-shadow:0 0 0 4px rgba(255,255,255,0.02);border-color:rgba(255,255,255,0.12)}
+
+    .hint{font-size:12px;color:rgba(255,255,255,0.65)}
+
+    .error{color:#ffb4b4;background:rgba(255,80,80,0.06);padding:8px 10px;border-radius:10px;font-size:13px;border:1px solid rgba(255,80,80,0.12);display:none}
+    .success{color:#b8ffcf;background:rgba(80,255,150,0.04);padding:8px 10px;border-radius:10px;font-size:13px;border:1px solid rgba(80,255,150,0.08);display:none}
+
+    /* Login button base style */
+    .btn{
+      appearance:none;border:none;padding:12px 18px;border-radius:14px;font-weight:600;cursor:pointer;letter-spacing:0.6px;font-size:15px;
+      background:linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));color:var(--accent);
+      transition:transform 160ms ease, box-shadow 160ms ease;
+      box-shadow: 0 6px 24px rgba(2,3,10,0.5);
+      position:relative;overflow:hidden;
+    }
+    .btn:active{transform:translateY(1px)}
+
+    /* small text area for password rules */
+    .rules{font-size:12px;color:rgba(255,255,255,0.6);display:flex;flex-direction:column;gap:6px}
+    .rule{display:flex;gap:8px;align-items:center}
+    .rule .ok{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,0.12)}
+    .rule.ok .ok{background:linear-gradient(90deg,#7efc7e,#42e3a4)}
+
+    /* Responsive adjustments */
+    @media (max-width:420px){
+      .card{padding:20px;border-radius:14px}
+    }
+
+    /* Small footer */
+    .foot{font-size:12px;color:rgba(255,255,255,0.45);text-align:center;margin-top:12px}
+
+    /* Accessibility: focus outline for keyboard users */
+    .btn:focus, input:focus{outline:3px solid rgba(255,255,255,0.04)}
+  </style>
+</head>
+<body>
+  <canvas id="starfield" aria-hidden="true"></canvas>
+
+  <main class="wrap">
+    <section class="card" role="region" aria-labelledby="loginHeading">
+      <div>
+        <div class="logo">Made With Asad Ali</div>
+        <div class="subtitle">Secure access · Beautiful experience</div>
+      </div>
+
+      <form id="loginForm" novalidate>
+        <div>
+          <label for="email">Email</label>
+          <input id="email" name="email" type="email" inputmode="email" placeholder="you@example.com" required autocomplete="username" aria-describedby="emailHelp">
+          <div id="emailHelp" class="hint">Enter your email address</div>
+        </div>
+
+        <div>
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" placeholder="Your secure password" required autocomplete="current-password" aria-describedby="pwHelp">
+          <div id="pwHelp" class="hint">Min 8 chars · First letter uppercase · 1 number · 1 special (!@#$%^&*)</div>
+        </div>
+
+        <div id="feedback" class="error" role="alert" aria-live="assertive"></div>
+        <div id="success" class="success" role="status" aria-live="polite"></div>
+
+        <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+          <button id="loginBtn" type="submit" class="btn">Sign In</button>
+          <div style="flex:1;min-width:140px;text-align:right" class="hint">Forgot password?</div>
+        </div>
+
+        <div class="rules" id="rules">
+          <div class="rule" id="rLen"><span class="ok"></span> Minimum 8 characters</div>
+          <div class="rule" id="rUpper"><span class="ok"></span> First letter uppercase</div>
+          <div class="rule" id="rNum"><span class="ok"></span> Contains at least one number</div>
+          <div class="rule" id="rSym"><span class="ok"></span> Contains at least one special symbol (!@#$%^&*)</div>
+        </div>
+
+      </form>
+
+      <div class="foot">Protected by client-side validation — server validation still required.</div>
+    </section>
+  </main>
+
+  <script>
+    /* ========== Starfield (Canvas) ========== */
+    (function(){
+      const canvas = document.getElementById('starfield');
+      const ctx = canvas.getContext('2d');
+      let w=0,h=0,stars=[];
+      const STAR_COUNT = Math.min(180, Math.floor(window.innerWidth/6));
+
+      function resize(){
+        const dpr = Math.max(1, window.devicePixelRatio || 1);
+        w = canvas.width = Math.floor(window.innerWidth * dpr);
+        h = canvas.height = Math.floor(window.innerHeight * dpr);
+        canvas.style.width = window.innerWidth + 'px';
+        canvas.style.height = window.innerHeight + 'px';
+        ctx.scale(dpr,dpr);
+        initStars();
+      }
+
+      function rand(min,max){return Math.random()*(max-min)+min}
+
+      function initStars(){
+        stars = [];
+        for(let i=0;i<STAR_COUNT;i++){
+          stars.push({
+            x: Math.random()*window.innerWidth,
+            y: Math.random()*window.innerHeight,
+            r: Math.random()*1.2 + 0.2,
+            vx: (Math.random()-0.5)*0.02, // slow drift
+            vy: (Math.random()*0.3 + 0.03),
+            twinkle: Math.random()*0.02 + 0.01,
+            phase: Math.random()*Math.PI*2
+          });
+        }
+      }
+
+      function draw(){
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        // faint nebula gradient for depth
+        const g = ctx.createLinearGradient(0,0,0,window.innerHeight);
+        g.addColorStop(0,'rgba(2,6,23,0.6)');
+        g.addColorStop(1,'rgba(4,8,20,0.9)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0,0,window.innerWidth,window.innerHeight);
+
+        for(const s of stars){
+          s.x += s.vx;
+          s.y += s.vy;
+          s.phase += s.twinkle;
+          // wrap around
+          if(s.y > window.innerHeight+10) s.y = -10;
+          if(s.x < -10) s.x = window.innerWidth+10;
+          if(s.x > window.innerWidth+10) s.x = -10;
+
+          const alpha = 0.6 + Math.sin(s.phase)*0.4;
+          ctx.beginPath();
+          const rad = Math.max(0.25, s.r * (1 + Math.sin(s.phase)*0.5));
+          ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+          ctx.arc(s.x, s.y, rad, 0, Math.PI*2);
+          ctx.fill();
+
+          // small shining halo
+          ctx.beginPath();
+          const halo = rad * 4;
+          const hg = ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,halo);
+          hg.addColorStop(0, `rgba(255,255,255,${alpha*0.06})`);
+          hg.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = hg;
+          ctx.fillRect(s.x-halo, s.y-halo, halo*2, halo*2);
+        }
+      }
+
+      function loop(){ draw(); requestAnimationFrame(loop); }
+      window.addEventListener('resize', resize);
+      resize(); loop();
+    })();
+
+    /* ========== Form Validation & Submission ========== */
+    (function(){
+      const form = document.getElementById('loginForm');
+      const email = document.getElementById('email');
+      const pw = document.getElementById('password');
+      const fb = document.getElementById('feedback');
+      const success = document.getElementById('success');
+      const rules = {
+        rLen: document.getElementById('rLen'),
+        rUpper: document.getElementById('rUpper'),
+        rNum: document.getElementById('rNum'),
+        rSym: document.getElementById('rSym')
+      };
+
+      function setRule(el,ok){ if(ok) el.classList.add('ok'); else el.classList.remove('ok'); }
+
+      function validateEmail(val){
+        // simple, safe email pattern (allows most legit emails but not overly permissive)
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+        return re.test(val);
+      }
+
+      function validatePassword(val){
+        const checks = {
+          len: val.length >= 8,
+          upper: /^[A-Z]/.test(val),
+          num: /\d/.test(val),
+          sym: /[!@#$%^&*]/.test(val)
+        };
+        // mark UI
+        setRule(rules.rLen, checks.len);
+        setRule(rules.rUpper, checks.upper);
+        setRule(rules.rNum, checks.num);
+        setRule(rules.rSym, checks.sym);
+        return checks;
+      }
+
+      // sanitize before display; prevents reflected injection in client-side messages
+      function escapeHtml(s){return String(s).replace(/[&<>"'`]/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;","`":"&#96;"}[c];});}
+
+      email.addEventListener('input', ()=>{ fb.style.display='none'; success.style.display='none'; });
+      pw.addEventListener('input', ()=>{ fb.style.display='none'; success.style.display='none'; validatePassword(pw.value); });
+
+      form.addEventListener('submit', function(e){
+        e.preventDefault(); fb.style.display='none'; success.style.display='none';
+        const em = email.value.trim();
+        const pwv = pw.value;
+
+        if(!validateEmail(em)){
+          fb.textContent = 'Please enter a valid email address.'; fb.style.display='block'; email.focus(); return;
+        }
+
+        const checks = validatePassword(pwv);
+        const failed = Object.keys(checks).filter(k=>!checks[k]);
+        if(failed.length){
+          fb.textContent = 'Password does not meet the requirements. Please check the rules below.'; fb.style.display='block'; pw.focus(); return;
+        }
+
+        // All client-side validation passed
+        // NOTE: this demo does not send credentials to a server. Replace this block with secure server-side submission using HTTPS and proper server validation.
+        success.textContent = 'Client-side validation passed — ready to submit securely to server.'; success.style.display='block';
+        // For demo UX, clear password field after "successful" validation
+        pw.value='';
+
+        // If you had to actually send: use fetch over HTTPS, include CSRF token and never log raw password to console/storage.
+      });
+    })();
+
+    /* ========== Rainbow Hover Animation (JS-driven) ========== */
+    (function(){
+      const btn = document.getElementById('loginBtn');
+      let anim = null; let hue = 0; let running=false;
+
+      function step(){
+        hue = (hue + 2) % 360;
+        // create subtle multi-stop gradient using HSL
+        const g = `linear-gradient(90deg, hsl(${hue} 100% 60%), hsl(${(hue+60)%360} 100% 60%), hsl(${(hue+120)%360} 100% 60%))`;
+        btn.style.background = g;
+        btn.style.boxShadow = `0 8px 28px rgba(0,0,0,0.45), 0 0 30px rgba(255,255,255,0.02)`;
+        anim = requestAnimationFrame(step);
+      }
+
+      btn.addEventListener('mouseenter', ()=>{ if(running) return; running=true; anim = requestAnimationFrame(step); });
+      btn.addEventListener('mouseleave', ()=>{ running=false; if(anim) cancelAnimationFrame(anim); anim=null; btn.style.background='linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))'; btn.style.boxShadow='0 6px 24px rgba(2,3,10,0.5)'; });
+
+      // keyboard accessibility: start on focus, stop on blur
+      btn.addEventListener('focus', ()=>{ if(!running){running=true; anim=requestAnimationFrame(step);} });
+      btn.addEventListener('blur', ()=>{ if(anim) cancelAnimationFrame(anim); running=false; anim=null; btn.style.background='linear-gradient(90deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))'; });
+    })();
+
+  </script>
+</body>
+</html>
